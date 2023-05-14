@@ -165,7 +165,9 @@ int main(int argc, char** argv)
     printf("rknn_init error ret=%d\n", ret);
     return -1;
   }
+  /* Create the neural network end */
 
+  /* Get the api version and driver version of the SDK */
   rknn_sdk_version version;
   ret = rknn_query(ctx, RKNN_QUERY_SDK_VERSION, &version, sizeof(rknn_sdk_version));
   if (ret < 0) {
@@ -173,7 +175,9 @@ int main(int argc, char** argv)
     return -1;
   }
   printf("sdk version: %s driver version: %s\n", version.api_version, version.drv_version);
+  /* Get the api version and driver version of the SDK */
 
+  /* Get the IO_num of the model */
   rknn_input_output_num io_num;
   ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
   if (ret < 0) {
@@ -181,7 +185,9 @@ int main(int argc, char** argv)
     return -1;
   }
   printf("model input num: %d, output num: %d\n", io_num.n_input, io_num.n_output);
+  /* Get the IO_num of the model */
 
+  /* Set the input/output tensor attributes according to the IO_num */
   rknn_tensor_attr input_attrs[io_num.n_input];
   memset(input_attrs, 0, sizeof(input_attrs));
   for (int i = 0; i < io_num.n_input; i++) {
@@ -201,10 +207,11 @@ int main(int argc, char** argv)
     ret                   = rknn_query(ctx, RKNN_QUERY_OUTPUT_ATTR, &(output_attrs[i]), sizeof(rknn_tensor_attr));
     dump_tensor_attr(&(output_attrs[i]));
   }
+  /* Set the input/output tensor attributes according to the IO_num */
 
   int channel = 3;
-  int width   = 0;
-  int height  = 0;
+  int width   = 0;  // this is the img width of the model's input, not the original image!
+  int height  = 0;  // this is the img height of the model's input, not the original image!
   if (input_attrs[0].fmt == RKNN_TENSOR_NCHW) {
     printf("model is NCHW input fmt\n");
     channel = input_attrs[0].dims[1];
@@ -228,6 +235,11 @@ int main(int argc, char** argv)
   inputs[0].pass_through = 0;
 
   // You may not need resize when src resulotion equals to dst resulotion
+  // Resizing operation is depent on the difference 
+  //   between the original img resolution(img_width/height) and the model input resolution(width/height)!!!!
+  // If they are different, resizing operation is required!
+  // In order to ensure the compatibility of the code under different models and input images, the following resize code should be retained.
+  // Resize operation
   void* resize_buf = nullptr;
 
   if (img_width != width || img_height != height) {
@@ -252,6 +264,7 @@ int main(int argc, char** argv)
   } else {
     inputs[0].buf = (void*)img.data;
   }
+  // Resize operation
 
   gettimeofday(&start_time, NULL);
   rknn_inputs_set(ctx, io_num.n_input, inputs);
