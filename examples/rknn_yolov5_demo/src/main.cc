@@ -108,6 +108,113 @@ static int saveFloat(const char* file_name, float* output, int element_size)
 }
 
 /*-------------------------------------------
+  Function:  rknn_init
+  Descrition: initial the following processing
+    1. Load model file
+    2. Query the API version and Driver version of the SDK
+    3. Query the input/output infomation of the model, such as input/output channels' number
+    4. Initialize the input/output tensors' attributes according to Step3
+  Inputs:
+    const char* model_path : model fullpath name
+  Outputs:
+    0: successful,  !=0: error
+  Version: V1.0.0
+  Update history:
+-------------------------------------------*/
+static rknn_input_output_num io_num;
+static rknn_sdk_version version;
+static rknn_tensor_attr* input_attrs = NULL;
+static rknn_tensor_attr* output_attrs = NULL;
+
+int rknn_init(const char* model_path) {
+    // 初始化模型加载操作
+    /* Create the neural network */
+    printf("Loading model...\n");
+    int            model_data_size = 0;
+    unsigned char* model_data = load_model(model_path, &model_data_size);
+    ret                       = rknn_init(&ctx, model_data, model_data_size, 0, NULL);
+    if (ret < 0) {
+      printf("rknn_init error ret=%d\n", ret);
+      return -1;
+    }
+    /* Create the neural network end */
+
+    // 获取SDK信息
+    /* Get the api version and driver version of the SDK */
+    ret = rknn_query(ctx, RKNN_QUERY_SDK_VERSION, &version, sizeof(rknn_sdk_version));
+    if (ret < 0) {
+      printf("rknn_init error ret=%d\n", ret);
+      return -1;
+    }
+    printf("sdk version: %s driver version: %s\n", version.api_version, version.drv_version);
+    /* Get the api version and driver version of the SDK */
+
+    // 设置输入输出参数
+    /* Get the IO_num of the model */
+    ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
+    if (ret < 0) {
+      printf("rknn_init error ret=%d\n", ret);
+      return -1;
+    }
+    printf("model input num: %d, output num: %d\n", io_num.n_input, io_num.n_output);
+    /* Get the IO_num of the model */
+
+    /* Set the input/output tensor attributes according to the IO_num */
+    //input_attrs = malloc(io_num.n_input * sizeof(rknn_tensor_attr));
+    input_attrs = calloc(io_num.n_input, sizeof(rknn_tensor_attr)); // request memory for input tensor attributes, and init to all 0
+    if (NULL == input_attrs) {
+        // 内存分配失败的错误处理
+        // ...
+    }
+    for (int i = 0; i < io_num.n_input; i++) {
+      (*(input_attrs + i)).index = i;
+      ret = rknn_query(ctx, RKNN_QUERY_INPUT_ATTR, (input_attrs + i), sizeof(rknn_tensor_attr));
+      if (ret < 0) {
+        printf("rknn_init error ret=%d\n", ret);
+        return -1;
+      }
+      dump_tensor_attr(input_attrs + i);
+    }
+
+    output_attrs = calloc(io_num.n_output, sizeof(rknn_tensor_attr)); // request memory for output tensor attributes, and init to all 0
+    if (NULL == output_attrs) {
+        // 内存分配失败的错误处理
+        // ...
+    }
+    for (int i = 0; i < io_num.n_output; i++) {
+      (*(output_attrs + i)).index = i;
+      ret = rknn_query(ctx, RKNN_QUERY_OUTPUT_ATTR, (output_attrs + i), sizeof(rknn_tensor_attr));
+      dump_tensor_attr(output_attrs + i);
+    }
+  /* Set the input/output tensor attributes according to the IO_num */
+
+    return 0; // 或者其他错误码
+}
+
+/*-------------------------------------------
+  Function:  rknn_inference
+  Descrition: inference processing
+
+  Inputs:
+
+  Outputs:
+
+  Version: V1.0.0
+  Update history:
+-------------------------------------------*/
+int rknn_inference(const char* image_path) {
+    // 执行推理操作
+    // ...
+
+    return 0; // 或者其他错误码
+}
+
+void rknn_cleanup() {
+    // 清理资源
+    // ...
+}
+
+/*-------------------------------------------
                   Main Functions
 -------------------------------------------*/
 int main(int argc, char** argv)
@@ -156,59 +263,66 @@ int main(int argc, char** argv)
   img_height = img.rows;
   printf("img width = %d, img height = %d\n", img_width, img_height);
 
+  ret = rknn_init(model_name);
+  if (0 != ret){
+    // 出错处理
+    printf("rknn_init error ret=%d\n", ret);
+    return -1;
+  }
+  /* Load model and initialization */
   /* Create the neural network */
-  printf("Loading mode...\n");
-  int            model_data_size = 0;
-  unsigned char* model_data      = load_model(model_name, &model_data_size);
-  ret                            = rknn_init(&ctx, model_data, model_data_size, 0, NULL);
-  if (ret < 0) {
-    printf("rknn_init error ret=%d\n", ret);
-    return -1;
-  }
-  /* Create the neural network end */
+  // printf("Loading model...\n");
+  // int            model_data_size = 0;
+  // unsigned char* model_data = load_model(model_name, &model_data_size);
+  // ret                       = rknn_init(&ctx, model_data, model_data_size, 0, NULL);
+  // if (ret < 0) {
+  //   printf("rknn_init error ret=%d\n", ret);
+  //   return -1;
+  // }
+  // /* Create the neural network end */
 
-  /* Get the api version and driver version of the SDK */
-  rknn_sdk_version version;
-  ret = rknn_query(ctx, RKNN_QUERY_SDK_VERSION, &version, sizeof(rknn_sdk_version));
-  if (ret < 0) {
-    printf("rknn_init error ret=%d\n", ret);
-    return -1;
-  }
-  printf("sdk version: %s driver version: %s\n", version.api_version, version.drv_version);
-  /* Get the api version and driver version of the SDK */
+  // /* Get the api version and driver version of the SDK */
+  // rknn_sdk_version version;
+  // ret = rknn_query(ctx, RKNN_QUERY_SDK_VERSION, &version, sizeof(rknn_sdk_version));
+  // if (ret < 0) {
+  //   printf("rknn_init error ret=%d\n", ret);
+  //   return -1;
+  // }
+  // printf("sdk version: %s driver version: %s\n", version.api_version, version.drv_version);
+  // /* Get the api version and driver version of the SDK */
 
-  /* Get the IO_num of the model */
-  rknn_input_output_num io_num;
-  ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
-  if (ret < 0) {
-    printf("rknn_init error ret=%d\n", ret);
-    return -1;
-  }
-  printf("model input num: %d, output num: %d\n", io_num.n_input, io_num.n_output);
-  /* Get the IO_num of the model */
+  // /* Get the IO_num of the model */
+  // rknn_input_output_num io_num;
+  // ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
+  // if (ret < 0) {
+  //   printf("rknn_init error ret=%d\n", ret);
+  //   return -1;
+  // }
+  // printf("model input num: %d, output num: %d\n", io_num.n_input, io_num.n_output);
+  // /* Get the IO_num of the model */
 
+  // /* Set the input/output tensor attributes according to the IO_num */
+  // rknn_tensor_attr input_attrs[io_num.n_input];
+  // memset(input_attrs, 0, sizeof(input_attrs));
+  // for (int i = 0; i < io_num.n_input; i++) {
+  //   input_attrs[i].index = i;
+  //   ret                  = rknn_query(ctx, RKNN_QUERY_INPUT_ATTR, &(input_attrs[i]), sizeof(rknn_tensor_attr));
+  //   if (ret < 0) {
+  //     printf("rknn_init error ret=%d\n", ret);
+  //     return -1;
+  //   }
+  //   dump_tensor_attr(&(input_attrs[i]));
+  // }
+
+  // rknn_tensor_attr output_attrs[io_num.n_output];
+  // memset(output_attrs, 0, sizeof(output_attrs));
+  // for (int i = 0; i < io_num.n_output; i++) {
+  //   output_attrs[i].index = i;
+  //   ret                   = rknn_query(ctx, RKNN_QUERY_OUTPUT_ATTR, &(output_attrs[i]), sizeof(rknn_tensor_attr));
+  //   dump_tensor_attr(&(output_attrs[i]));
+  // }
   /* Set the input/output tensor attributes according to the IO_num */
-  rknn_tensor_attr input_attrs[io_num.n_input];
-  memset(input_attrs, 0, sizeof(input_attrs));
-  for (int i = 0; i < io_num.n_input; i++) {
-    input_attrs[i].index = i;
-    ret                  = rknn_query(ctx, RKNN_QUERY_INPUT_ATTR, &(input_attrs[i]), sizeof(rknn_tensor_attr));
-    if (ret < 0) {
-      printf("rknn_init error ret=%d\n", ret);
-      return -1;
-    }
-    dump_tensor_attr(&(input_attrs[i]));
-  }
-
-  rknn_tensor_attr output_attrs[io_num.n_output];
-  memset(output_attrs, 0, sizeof(output_attrs));
-  for (int i = 0; i < io_num.n_output; i++) {
-    output_attrs[i].index = i;
-    ret                   = rknn_query(ctx, RKNN_QUERY_OUTPUT_ATTR, &(output_attrs[i]), sizeof(rknn_tensor_attr));
-    dump_tensor_attr(&(output_attrs[i]));
-  }
-  /* Set the input/output tensor attributes according to the IO_num */
-
+  
   int channel = 3;
   int width   = 0;  // this is the img width of the model's input, not the original image!
   int height  = 0;  // this is the img height of the model's input, not the original image!
@@ -267,7 +381,7 @@ int main(int argc, char** argv)
   // Resize operation
 
   gettimeofday(&start_time, NULL);
-  rknn_inputs_set(ctx, io_num.n_input, inputs);
+  rknn_inputs_set(ctx, io_num.n_input, inputs)
 
   rknn_output outputs[io_num.n_output];
   memset(outputs, 0, sizeof(outputs));
