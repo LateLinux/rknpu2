@@ -31,6 +31,7 @@
 #include "postprocess.h"
 #include "rga.h"
 #include "rknn_api.h"
+#include "xsy_yolo.h"
 
 #define PERF_WITH_POST 1
 /*-------------------------------------------
@@ -121,10 +122,30 @@ static int saveFloat(const char* file_name, float* output, int element_size)
   Version: V1.0.0
   Update history:
 -------------------------------------------*/
+// init rga context
+src = calloc(1,sizeof(rga_buffer_t));
+dst = calloc(1,sizeof(rga_buffer_t));
+src_rect = calloc(1, sizeof(im_rect));
+dst_rect = calloc(1, sizeof(im_rect));
+// rga_buffer_t src;
+// rga_buffer_t dst;
+// im_rect      src_rect;
+// im_rect      dst_rect;
+// memset(&src_rect, 0, sizeof(src_rect));
+// memset(&dst_rect, 0, sizeof(dst_rect));
+// memset(&src, 0, sizeof(src));
+// memset(&dst, 0, sizeof(dst));
+
 static rknn_input_output_num io_num;
 static rknn_sdk_version version;
 static rknn_tensor_attr* input_attrs = NULL;
 static rknn_tensor_attr* output_attrs = NULL;
+static rknn_input inputs[1];
+
+static int model_channel = 3;
+// static int model_width   = 0;  
+// static int model_height  = 0;  // this is the img height of the model's input, not the original image!
+static RECT model_res;  // this is the model's input resolution, not the original image!
 
 int model_init(const char* model_path) {
     // 初始化模型加载操作
@@ -187,12 +208,31 @@ int model_init(const char* model_path) {
       dump_tensor_attr(output_attrs + i);
     }
   /* Set the input/output tensor attributes according to the IO_num */
+    if (input_attrs[0].fmt == RKNN_TENSOR_NCHW) {
+      printf("model is NCHW input fmt\n");
+      model_channel     = input_attrs[0].dims[1];
+      model_res.height  = input_attrs[0].dims[2];
+      model_res.width   = input_attrs[0].dims[3];
+    } else {
+      printf("model is NHWC input fmt\n");
+      model_res.height  = input_attrs[0].dims[1];
+      model_res.width   = input_attrs[0].dims[2];
+      model_channel     = input_attrs[0].dims[3];
+    }
 
+    printf("model input model_height=%d, model_width=%d, model_channel=%d\n", model_height, model_width, model_channel);
+
+    memset(inputs, 0, sizeof(inputs));
+    inputs[0].index        = 0;
+    inputs[0].type         = RKNN_TENSOR_UINT8;
+    inputs[0].size         = model_width * model_height * model_channel;
+    inputs[0].fmt          = RKNN_TENSOR_NHWC;
+    inputs[0].pass_through = 0;
     return 0; // 或者其他错误码
 }
 
 /*-------------------------------------------
-  Function:  rknn_inference
+  Function:  run_inference
   Descrition: inference processing
 
   Inputs:
@@ -202,12 +242,57 @@ int model_init(const char* model_path) {
   Version: V1.0.0
   Update history:
 -------------------------------------------*/
-int rknn_inference(const char* image_path) {
+int run_inference(const char* image_path) {
     // 执行推理操作
     // ...
 
     return 0; // 或者其他错误码
 }
+
+/*-------------------------------------------
+  Function:  rga_resize
+  Descrition: resize img with RGA
+      You may not need resize when src resulotion equals to dst resulotion
+      Resizing operation is depent on the difference 
+        between the original img resolution(img_width/height) and the model input resolution(width/height)!!!!
+      If they are different, resizing operation is required!
+      In order to ensure the compatibility of the code under different models and input images, the following resize code should be retained.
+      Resize operation
+  Inputs:
+
+  Outputs:
+
+  Version: V1.0.0
+  Update history:
+-------------------------------------------*/
+int rga_resize(){
+  void* resize_buf = nullptr;
+  if (img_width != model_res.width || img_height != model_res.height) {
+    printf("resize with RGA!\n");
+    resize_buf = malloc(model_res.height * model_res.width * model_channel);
+    memset(resize_buf, 0x00, model_res.height * model_res.width * model_channel);
+
+    src = wrapbuffer_virtualaddr((void*)img.data, img_width, img_height, RK_FORMAT_RGB_888);
+    dst = wrapbuffer_virtualaddr((void*)resize_buf, model_width, model_height, RK_FORMAT_RGB_888);
+    ret = imcheck(src, dst, src_rect, dst_rect);
+    if (IM_STATUS_NOERROR != ret) {
+      printf("%d, check error! %s", __LINE__, imStrError((IM_STATUS)ret));
+      return ret;
+    }
+    IM_STATUS STATUS = imresize(src, dst);
+
+    // for debug
+    cv::Mat resize_img(cv::Size(model_width, model_height), CV_8UC3, resize_buf);
+    cv::imwrite("resize_input.jpg", resize_img);
+
+    inputs[0].buf = resize_buf;
+  } else {
+    inputs[0].buf = (void*)img.data;
+  }
+  // Resize operation
+  return 0
+}
+
 
 void rknn_cleanup() {
     // 清理资源
@@ -323,28 +408,28 @@ int main(int argc, char** argv)
   // }
   /* Set the input/output tensor attributes according to the IO_num */
   
-  int channel = 3;
-  int width   = 0;  // this is the img width of the model's input, not the original image!
-  int height  = 0;  // this is the img height of the model's input, not the original image!
+  int model_channel = 3;
+  int model_width   = 0;  // this is the img width of the model's input, not the original image!
+  int model_height  = 0;  // this is the img height of the model's input, not the original image!
   if (input_attrs[0].fmt == RKNN_TENSOR_NCHW) {
     printf("model is NCHW input fmt\n");
-    channel = input_attrs[0].dims[1];
-    height  = input_attrs[0].dims[2];
-    width   = input_attrs[0].dims[3];
+    model_channel = input_attrs[0].dims[1];
+    model_height  = input_attrs[0].dims[2];
+    model_width   = input_attrs[0].dims[3];
   } else {
     printf("model is NHWC input fmt\n");
-    height  = input_attrs[0].dims[1];
-    width   = input_attrs[0].dims[2];
-    channel = input_attrs[0].dims[3];
+    model_height  = input_attrs[0].dims[1];
+    model_width   = input_attrs[0].dims[2];
+    model_channel = input_attrs[0].dims[3];
   }
 
-  printf("model input height=%d, width=%d, channel=%d\n", height, width, channel);
+  printf("model input model_height=%d, model_width=%d, model_channel=%d\n", model_height, model_width, model_channel);
 
   rknn_input inputs[1];
   memset(inputs, 0, sizeof(inputs));
   inputs[0].index        = 0;
   inputs[0].type         = RKNN_TENSOR_UINT8;
-  inputs[0].size         = width * height * channel;
+  inputs[0].size         = model_width * model_height * model_channel;
   inputs[0].fmt          = RKNN_TENSOR_NHWC;
   inputs[0].pass_through = 0;
 
@@ -356,13 +441,13 @@ int main(int argc, char** argv)
   // Resize operation
   void* resize_buf = nullptr;
 
-  if (img_width != width || img_height != height) {
+  if (img_width != model_width || img_height != model_height) {
     printf("resize with RGA!\n");
-    resize_buf = malloc(height * width * channel);
-    memset(resize_buf, 0x00, height * width * channel);
+    resize_buf = malloc(model_height * model_width * model_channel);
+    memset(resize_buf, 0x00, model_height * model_width * model_channel);
 
     src = wrapbuffer_virtualaddr((void*)img.data, img_width, img_height, RK_FORMAT_RGB_888);
-    dst = wrapbuffer_virtualaddr((void*)resize_buf, width, height, RK_FORMAT_RGB_888);
+    dst = wrapbuffer_virtualaddr((void*)resize_buf, model_width, model_height, RK_FORMAT_RGB_888);
     ret = imcheck(src, dst, src_rect, dst_rect);
     if (IM_STATUS_NOERROR != ret) {
       printf("%d, check error! %s", __LINE__, imStrError((IM_STATUS)ret));
@@ -371,7 +456,7 @@ int main(int argc, char** argv)
     IM_STATUS STATUS = imresize(src, dst);
 
     // for debug
-    cv::Mat resize_img(cv::Size(width, height), CV_8UC3, resize_buf);
+    cv::Mat resize_img(cv::Size(model_width, model_height), CV_8UC3, resize_buf);
     cv::imwrite("resize_input.jpg", resize_img);
 
     inputs[0].buf = resize_buf;
@@ -395,8 +480,8 @@ int main(int argc, char** argv)
   printf("once run use %f ms\n", (__get_us(stop_time) - __get_us(start_time)) / 1000);
 
   // post process
-  float scale_w = (float)width / img_width;
-  float scale_h = (float)height / img_height;
+  float scale_w = (float)model_width / img_width;
+  float scale_h = (float)model_height / img_height;
 
   detect_result_group_t detect_result_group;
   std::vector<float>    out_scales;
@@ -405,7 +490,7 @@ int main(int argc, char** argv)
     out_scales.push_back(output_attrs[i].scale);
     out_zps.push_back(output_attrs[i].zp);
   }
-  post_process((int8_t*)outputs[0].buf, (int8_t*)outputs[1].buf, (int8_t*)outputs[2].buf, height, width,
+  post_process((int8_t*)outputs[0].buf, (int8_t*)outputs[1].buf, (int8_t*)outputs[2].buf, model_height, model_width,
                box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
 
   // Draw Objects
@@ -434,7 +519,7 @@ int main(int argc, char** argv)
     ret = rknn_run(ctx, NULL);
     ret = rknn_outputs_get(ctx, io_num.n_output, outputs, NULL);
 #if PERF_WITH_POST
-    post_process((int8_t*)outputs[0].buf, (int8_t*)outputs[1].buf, (int8_t*)outputs[2].buf, height, width,
+    post_process((int8_t*)outputs[0].buf, (int8_t*)outputs[1].buf, (int8_t*)outputs[2].buf, model_height, model_width,
                  box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
 #endif
     ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
