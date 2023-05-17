@@ -126,7 +126,7 @@ static rknn_sdk_version version;
 static rknn_tensor_attr* input_attrs = NULL;
 static rknn_tensor_attr* output_attrs = NULL;
 
-int rknn_init(const char* model_path) {
+int model_init(const char* model_path) {
     // 初始化模型加载操作
     /* Create the neural network */
     printf("Loading model...\n");
@@ -263,7 +263,7 @@ int main(int argc, char** argv)
   img_height = img.rows;
   printf("img width = %d, img height = %d\n", img_width, img_height);
 
-  ret = rknn_init(model_name);
+  ret = model_init(model_name);
   if (0 != ret){
     // 出错处理
     printf("rknn_init error ret=%d\n", ret);
